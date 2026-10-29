@@ -1896,7 +1896,8 @@ let userName=(function(){try{return localStorage.getItem('ms_username')||'';}cat
 let userTitle=(function(){try{return localStorage.getItem('ms_usertitle')||'';}catch(e){return '';}})();
 
 function initUser(){
- if(userName){
+ // [קישור ישיר] נפתח עם hash של מקור (#m1500, #t10000-sim): פותחים את המקור מיד; מסך השם יוצג בביקור הבא
+ if(userName || /^#[mtdby]\d+(-sim)?$/.test(location.hash)){
   startApp();
  } else {
   showWelcomeScreen();
@@ -5950,7 +5951,8 @@ document.addEventListener('keydown', e => {
 
 // Auto-open on first visit (after name is set)
 function maybeShowTour() {
-  if (!localStorage.getItem('ms_tour_done')) {
+  // [קישור ישיר] בביקור ראשון מקישור (עוד אין שם) הסיור לא מכסה את המקור; יוצג בביקור הבא
+  if (!localStorage.getItem('ms_tour_done') && userName) {
     setTimeout(openTour, 600);
   }
 }
@@ -9349,10 +9351,26 @@ window.goToSource = function(j,src){
     fn(+ref.id); return true;
   }
   window.openRefByHash=function(hash){
-    const m=String(hash||'').replace(/^#/,'').match(/^([mtdby])(\d+)$/); if(!m) return false;
+    const m=String(hash||'').replace(/^#/,'').match(/^([mtdby])(\d+)(-sim)?$/); if(!m) return false;
     const kind=Object.keys(KIND_PREFIX).find(k=>KIND_PREFIX[k]===m[1]);
-    return openRef({kind,id:+m[2]});
+    const ok=openRef({kind,id:+m[2]});
+    if(ok && m[3]) showSimPanel();
+    return ok;
   };
+  // סיומת "-sim" (למשל #m1500-sim): המקור נפתח כרגיל, ולשונית "קשורות" גלויה. במסך רחב היא כבר לצד המקור;
+  // במסך צר היא מתחת למקור, ולכן גוללים אליה אחרי שהמקבילות הוצגו (כשאין עוד ספינר).
+  function showSimPanel(){
+    if(activeTab!=='sim') switchTab('sim');
+    const rp=document.getElementById('right-panel'); if(!rp) return;
+    if(rp.classList.contains('right-hidden') && typeof window.toggleRightPanel==='function') window.toggleRightPanel(true);
+    if(!(window.matchMedia && window.matchMedia('(max-width:820px)').matches)) return;
+    let n=0;
+    (function wait(){
+      const d=document.getElementById('tab-sim');
+      if(d && d.querySelector('.spinner') && ++n<150) return setTimeout(wait,150);
+      rp.scrollIntoView({block:'start'});
+    })();
+  }
   // רישום המיקום + עדכון ה-hash אחרי כל פתיחת מקור
   let _hashLock=false;
   function afterShow(){
