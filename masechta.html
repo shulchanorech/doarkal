@@ -94,6 +94,20 @@ body{font-family:"Frank Ruhl Libre","David","FrankRuehl","Times New Roman",serif
 .ac-minor{text-decoration:underline dotted #b07020;text-underline-offset:3px;cursor:help;}
 .ac-fold a{color:var(--brown);font-family:"Assistant","Segoe UI",sans-serif;font-size:.85em;}
 @media (max-width:700px){ #aligncmp-overlay{padding:6px;} #aligncmp-body{padding:8px;font-size:.98em;} .ac-table td{padding:4px 6px;line-height:1.7;} }
+/* ── 🔗 חלון מרכזי: המקור וכל מקבילותיו בטקסט מלא (#m…-sim / #t…-sim) ── */
+#parfull-overlay{display:none;position:fixed;inset:0;background:rgba(20,10,4,.78);z-index:240;align-items:flex-start;justify-content:center;padding:22px 12px;}
+#parfull-box{background:var(--bg2);border:2px solid var(--gold);border-radius:14px;width:min(980px,100%);max-height:calc(100vh - 44px);max-height:calc(100dvh - 44px);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden;}
+#parfull-body{overflow:auto;padding:12px 16px 18px;overscroll-behavior:contain;}
+.pf-cur{background:#fff8e4;border:1px solid var(--gold);border-radius:10px;padding:10px 14px 12px;margin-bottom:12px;}
+.pf-cur .sim-title{font-size:.95em;color:var(--brown);}
+.pf-text{font-size:1.15em;line-height:1.9;}
+#parfull-body .sim-card{cursor:default;padding:12px 15px;}
+#parfull-body .sim-card:hover{transform:none;}
+#parfull-body .sim-title{font-size:.9em;color:var(--brown);}
+#parfull-body .sim-text{display:block;-webkit-line-clamp:unset;overflow:visible;font-size:1.05em;line-height:1.85;}
+#parfull-body .card-actions{flex-wrap:wrap;}
+.pf-text,#parfull-body .sim-text{overflow-wrap:anywhere;}
+@media (max-width:700px){ #parfull-overlay{padding:6px;} #parfull-box{max-height:calc(100vh - 12px);max-height:calc(100dvh - 12px);} #parfull-body{padding:8px;} .pf-text{font-size:1.05em;} }
 /* ── Phase 36: smart mode — source chips instead of proximity/sort ── */
 body.smart-on #prox-bar{display:none !important;}
 body.smart-on #search-meta select,body.smart-on #search-meta label{display:none !important;}
@@ -5733,7 +5747,8 @@ runSearch = function(event) {
 // ── Single canonical renderSimCards (controls + compare/source buttons +
 //    type=button + stopPropagation + mishna&tosefta + shared-tag chips +
 //    count by items actually rendered). ──
-function renderSimCards(results, hl, container, isWord, pendingTos) {
+//    full=true: the central -sim view (PARALLELS.openFull) — same cards, whole text, card itself not a link. ──
+function renderSimCards(results, hl, container, isWord, pendingTos, full) {
   const controls = (typeof renderSimControls==='function') ? renderSimControls() : '';
   if (!results.length) { container.innerHTML = controls + '<p style="color:var(--muted);font-size:.85em;padding:8px">לא נמצאו קשרים</p>'; return; }
   const cleanHL = hl ? hl.map(w=>stripNikud(w).replace(/[^א-ת]/g,'')) : null;
@@ -5770,7 +5785,7 @@ function renderSimCards(results, hl, container, isWord, pendingTos) {
     const isTos = src === 'tosefta';
     const item = resolveAnyItem(j,src);
     if (!item) return;
-    let prev = _simSafeHighlight(item.t, cleanHL, 220);
+    let prev = _simSafeHighlight(item.t, cleanHL, full ? 0 : 220);
     const pct = Math.round(Math.min(score,1)*100);
     const pc = pct>=70?'pct-h':pct>=40?'pct-m':'pct-l';
     const st = (typeof cleanSourceTitle==='function') ? cleanSourceTitle(item, src) : (item.h||'').replace('מסכת ','').replace('תוספתא ','');
@@ -5789,7 +5804,7 @@ function renderSimCards(results, hl, container, isWord, pendingTos) {
     }
 
     const _srcArg = src || (isTos ? 'tosefta' : 'mishna');
-    html += `<div class="${cardClass}" onclick="goToSource(${j},'${_srcArg}')">
+    html += `<div class="${cardClass}"${full ? '' : ` onclick="goToSource(${j},'${_srcArg}')"`}>
       <div class="sim-top"><span class="sim-num" style="background:var(--gold);color:var(--sidebar);border-radius:50%;min-width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;font-size:.68em;font-weight:bold;margin-left:5px;flex-shrink:0">${_ridx+1}</span>${badge}<span class="sim-title" style="flex:1;text-align:center">${_simEsc(st)}</span><span class="sim-pct ${pc}">${pct}%</span></div>
       ${tagBadges ? `<div style="margin-bottom:5px;display:flex;flex-wrap:wrap;gap:3px;">${tagBadges}</div>` : ''}
       <div class="sim-text">${prev}</div>
@@ -9357,19 +9372,13 @@ window.goToSource = function(j,src){
     if(ok && m[3]) showSimPanel();
     return ok;
   };
-  // סיומת "-sim" (למשל #m1500-sim): המקור נפתח כרגיל, ולשונית "קשורות" גלויה. במסך רחב היא כבר לצד המקור;
-  // במסך צר היא מתחת למקור, ולכן גוללים אליה אחרי שהמקבילות הוצגו (כשאין עוד ספינר).
+  // סיומת "-sim" (למשל #m1500-sim): המקור נפתח כרגיל, ולשונית "קשורות" גלויה מאחור; המקור וכל מקבילותיו
+  // מוצגים ברצף ובטקסט מלא בחלון מרכזי (PARALLELS.openFull). ✕ או Esc — חזרה לתצוגה הרגילה (המקור + "קשורות").
   function showSimPanel(){
     if(activeTab!=='sim') switchTab('sim');
-    const rp=document.getElementById('right-panel'); if(!rp) return;
-    if(rp.classList.contains('right-hidden') && typeof window.toggleRightPanel==='function') window.toggleRightPanel(true);
-    if(!(window.matchMedia && window.matchMedia('(max-width:820px)').matches)) return;
-    let n=0;
-    (function wait(){
-      const d=document.getElementById('tab-sim');
-      if(d && d.querySelector('.spinner') && ++n<150) return setTimeout(wait,150);
-      rp.scrollIntoView({block:'start'});
-    })();
+    const rp=document.getElementById('right-panel');
+    if(rp && rp.classList.contains('right-hidden') && typeof window.toggleRightPanel==='function') window.toggleRightPanel(true);
+    if(window.PARALLELS && typeof window.PARALLELS.openFull==='function') window.PARALLELS.openFull();
   }
   // רישום המיקום + עדכון ה-hash אחרי כל פתיחת מקור
   let _hashLock=false;
@@ -9777,12 +9786,14 @@ window.goToSource = function(j,src){
   // ── רינדור ──
   function title(item,src){ return (typeof cleanSourceTitle==='function')?cleanSourceTitle(item,src):(item.h||''); }
   // תצוגה מקדימה: הרצפים המשותפים מודגשים במקומם (לא כל מופע של המילה), והחיתוך סביב הרצף הראשון
-  function preview(item, hl, runsB, Btoks){
+  // full=true (החלון המרכזי): אותן הדגשות, אבל הטקסט כולו — בלי חיתוך
+  function preview(item, hl, runsB, Btoks, full){
     const raw=String(item.t||'').split(/\s+/).filter(Boolean);
     const mark=new Set();
     if(runsB && Btoks){ runsB.slice(0,4).forEach(r=>{ for(let k=0;k<r.len;k++){ const t=Btoks[r.b+k]; if(t) mark.add(t.i); } }); }
+    if(!mark.size && full) return esc(raw.join(' '));
     if(!mark.size) return (typeof _simSafeHighlight==='function')?_simSafeHighlight(item.t, hl&&hl.length?hl:null, 230):esc(stripNikud(item.t||'').slice(0,230));
-    const first=Math.min(...mark); let start=Math.max(0, first-12), total=0, end=start;
+    const first=Math.min(...mark); let start=full?0:Math.max(0, first-12), total=0, end=full?raw.length:start;
     while(end<raw.length && total<230){ total+=raw[end].length+1; end++; }
     if(end<=Math.max(...mark) && Math.max(...mark)<raw.length) end=Math.min(raw.length, Math.max(...mark)+3);
     const parts=[]; let open=false;
@@ -9790,7 +9801,8 @@ window.goToSource = function(j,src){
     if(open) parts.push('</mark>');
     return (start>0?'…':'')+parts.join('')+(end<raw.length?'…':'');
   }
-  P.render=function(rows, container, curKey){
+  // full=true: החלון המרכזי (#…-sim) — אותם כרטיסים באותו סדר, בטקסט מלא; הכרטיס עצמו אינו קישור (כדי שאפשר יהיה לסמן טקסט)
+  P.render=function(rows, container, curKey, full){
     const controls=(typeof renderSimControls==='function')?renderSimControls():'';
     const N=window.NEURAL, E=window.ENRICH;
     const legend=`<div class="smart-hint" style="padding:2px 6px 6px">🔗 דירוג משולב: <b>לשון משותפת</b> (רצפי מילים זהים)${N&&N.ready?' + <b>משמעות</b> (וקטורים)':''} + דמיון מילולי${E&&E.ready?' + <b>ניתוח</b> (מילות מפתח)':''}. כרטיס "רצף" = שתי פסקאות סמוכות שיחד מקבילות למקור.</div>`;
@@ -9812,9 +9824,9 @@ window.goToSource = function(j,src){
         const t2=title(r.merged.item,r.src);
         // באיחוד: B הוא הטקסט המחובר; הרצפים מתייחסים אליו — נפצל לפי אורך החלק הראשון
         const n1=toks(r.item.t).length; const runs1=r.al.runs.filter(x=>x.b<n1), runs2=r.al.runs.filter(x=>x.b>=n1).map(x=>({a:x.a,b:x.b-n1,len:x.len}));
-        body=`<div class="sim-text">${preview(r.item,r.hl,runs1,r.B)}</div><div class="par-join">⤵ ממשיך ב: ${esc(t2)}</div><div class="sim-text">${preview(r.merged.item,r.hl,runs2,toks(r.merged.item.t))}</div>`;
-      } else body=`<div class="sim-text">${preview(r.item,r.hl,r.al.runs,r.B)}</div>`;
-      html+=`<div class="${cls}" onclick="goToSource(${r.id},'${r.src}')">
+        body=`<div class="sim-text">${preview(r.item,r.hl,runs1,r.B,full)}</div><div class="par-join">⤵ ממשיך ב: ${esc(t2)}</div><div class="sim-text">${preview(r.merged.item,r.hl,runs2,toks(r.merged.item.t),full)}</div>`;
+      } else body=`<div class="sim-text">${preview(r.item,r.hl,r.al.runs,r.B,full)}</div>`;
+      html+=`<div class="${cls}"${full?'':` onclick="goToSource(${r.id},'${r.src}')"`}>
         <div class="sim-top"><span class="sim-num" style="background:var(--gold);color:var(--sidebar);border-radius:50%;min-width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;font-size:.68em;font-weight:bold;margin-left:5px;flex-shrink:0">${i+1}</span>${badge}<span class="sim-title" style="flex:1;text-align:center">${esc(t1)}${r.merged?' <span class="par-seq">+ רצף</span>':''}</span><span class="sim-pct ${pc}">${pct}%</span></div>
         ${chips.length?`<div class="par-chips">${chips.join('')}</div>`:''}
         ${body}
@@ -9853,6 +9865,69 @@ window.goToSource = function(j,src){
       P.render(rows, d, ck[0]);
     },10); });
   };
+
+  // ── 🔗 חלון מרכזי: המקור וכל מקבילותיו ברצף, בטקסט מלא (נפתח מכתובת עם "-sim": #m1500-sim, #t10000-sim) ──
+  // אין כאן חישוב חדש: החלון משקף את הרינדור האחרון של לשונית "קשורות" — אותו מנוע, אותו סדר, אותם "רצפים",
+  // אותה בחירת "השוואה לפי"/"טווח" — ומרנדר אותו שוב עם full=true. ✕ / Esc / לחיצה מחוץ לחלון: חזרה לתצוגה הרגילה.
+  let _last=null, _fullOpen=false;
+  const _fullSpin='<div style="text-align:center;padding:20px;color:var(--muted)"><div class="spinner"></div><p style="margin-top:8px;font-size:.82em">מחפש מקבילות…</p></div>';
+  const _oRender=P.render;
+  P.render=function(rows, container, curKey, full){
+    _oRender.apply(this, arguments);
+    if(!full && container && container.id==='tab-sim'){ _last={rows, curKey, key:curKey}; if(_fullOpen) drawFull(); }
+  };
+  if(typeof renderSimCards==='function'){   // מצבי "השוואה לפי" האחרים (מילים, קטגוריות…) מרונדרים ב-renderSimCards
+    const _oCards=renderSimCards;
+    renderSimCards=function(results, hl, container, isWord, pendingTos, full){
+      const r=_oCards.apply(this, arguments);
+      if(!full && container && container.id==='tab-sim'){ const ck=currentKey(); _last={cards:[results, hl, isWord, pendingTos], key:ck&&ck[0]}; if(_fullOpen) drawFull(); }
+      return r;
+    };
+    window.renderSimCards=renderSimCards;
+  }
+  function fullOverlay(){
+    let ov=document.getElementById('parfull-overlay'); if(ov) return ov;
+    ov=document.createElement('div'); ov.id='parfull-overlay';
+    ov.innerHTML=`<div id="parfull-box" role="dialog" aria-modal="true" aria-labelledby="parfull-title" onclick="event.stopPropagation()"><div class="ac-head"><span class="ac-title" id="parfull-title">🔗 מקבילות</span><span class="ac-ctl"><button type="button" class="cmp-close" onclick="PARALLELS.closeFull()" title="חזרה לתצוגה הרגילה (Esc)">✕ סגור</button></span></div><div id="parfull-body"></div></div>`;
+    ov.addEventListener('click',()=>P.closeFull());
+    // שינוי "השוואה לפי"/"טווח" בתוך החלון: מחשבים מחדש ב"קשורות" (כרגיל), ובינתיים ספינר; התוצאה תגיע דרך הרינדור של "קשורות"
+    ov.querySelector('#parfull-body').addEventListener('change',e=>{ const l=document.getElementById('parfull-list'); if(l && e.target.closest('.sim-controls')) l.innerHTML=((typeof renderSimControls==='function')?renderSimControls():'')+_fullSpin; });
+    document.body.appendChild(ov);
+    return ov;
+  }
+  function drawFull(){
+    const body=document.getElementById('parfull-body'); if(!body) return;
+    const ck=currentKey(); if(!ck||!ck[2]){ P.closeFull(); return; }
+    const t=title(ck[2],ck[1]), badge=(typeof sourceBadge==='function')?sourceBadge(ck[1]):'';
+    document.getElementById('parfull-title').textContent='🔗 מקבילות: '+t;
+    body.innerHTML=`<div class="pf-cur"><div class="sim-top">${badge}<span class="sim-title">${esc(t)}</span></div><div class="pf-text">${esc(String(ck[2].t||'').split(/\s+/).filter(Boolean).join(' '))}</div></div><div id="parfull-list"></div>`;
+    const list=document.getElementById('parfull-list');
+    if(!_last || _last.key!==ck[0]){ list.innerHTML=_fullSpin; return; }
+    if(_last.rows) P.render(_last.rows, list, _last.curKey, true);
+    else renderSimCards(_last.cards[0], _last.cards[1], list, _last.cards[2], _last.cards[3], true);
+  }
+  P.openFull=function(){
+    const ov=fullOverlay(); _fullOpen=true; ov.style.display='flex'; drawFull();
+    const b=document.getElementById('parfull-body'); if(b) b.scrollTop=0;
+    try{ ov.querySelector('.cmp-close').focus({preventScroll:true}); }catch(e){}
+  };
+  P.closeFull=function(){ _fullOpen=false; const ov=document.getElementById('parfull-overlay'); if(ov) ov.style.display='none'; };
+  // מעבר למקור אחר (📖 עבור למקור, מתוך ההשוואה צד־לצד וכו') סוגר את החלון; "⚖️ בפאנל" — סוגר ומציג בפאנל הצדדי
+  ['showMishna','showTosefta','showMidrash','showBavli','showYeru','openCompare'].forEach(fn=>{
+    try{ const orig=eval(fn); if(typeof orig!=='function') return;
+      const wrapped=function(){ if(_fullOpen) P.closeFull(); return orig.apply(this, arguments); };
+      eval(fn+'=wrapped'); window[fn]=wrapped; }catch(e){}
+  });
+  // Esc סוגר את החלון (אלא אם פתוח מעליו חלון אחר — הוא נסגר קודם); חיצים וקיצורים אינם מנווטים מאחוריו
+  const _oBlocking=(typeof isBlockingOverlayOpen==='function')?isBlockingOverlayOpen:null;
+  document.addEventListener('keydown',e=>{
+    if(!_fullOpen || e.key!=='Escape') return;
+    const ac=document.getElementById('aligncmp-overlay'); if(ac && ac.style.display==='flex') return;
+    if(_oBlocking && _oBlocking()) return;
+    e.stopPropagation(); P.closeFull();
+  }, true);
+  if(_oBlocking){ isBlockingOverlayOpen=function(){ return _oBlocking() || (_fullOpen?document.getElementById('parfull-overlay'):null); }; window.isBlockingOverlayOpen=isBlockingOverlayOpen; }
+
   // אפשרות בתפריט "השוואה לפי" — ראשונה
   if(typeof renderSimControls==='function'){
     const _o=renderSimControls;
