@@ -1098,6 +1098,16 @@ table.relgraph-bd tr.rg-footer-row th,table.relgraph-bd tr.rg-footer-row td{posi
 .cmp-source-badge .mishna-title-tos,
 .cmp-source-badge .mishna-title-midrash{display:inline-block;font-size:.8em;padding:2px 10px;border-radius:10px;}
 .cmp-text.cmp-text-main{clear:both;}
+
+/* [38] שאלה חופשית — מהדורה ניסיונית, פחות בולטת */
+#welcome-screen{display:none !important;}
+.tb-ask{background:none !important;color:var(--gold-light) !important;font-weight:400 !important;border:1px solid #5a3a20 !important;box-shadow:none !important;}
+.tb-ask:hover{background:#3a1e08 !important;}
+#sb-ask-btn{background:none !important;color:var(--gold-light,#f0d080) !important;border:1px dashed #6a4a26 !important;box-shadow:none !important;font-weight:400 !important;font-size:.82em !important;padding:6px 8px !important;opacity:.85;}
+#sb-ask-btn:hover{opacity:1;transform:none !important;background:rgba(255,255,255,.04) !important;}
+.hint-card.hc-ask{background:var(--card-bg) !important;border-color:var(--border) !important;color:var(--muted) !important;font-weight:400 !important;}
+.beta-tag{display:inline-block;font-size:.68em;font-weight:700;line-height:1.2;padding:1px 7px;border-radius:9px;background:#b45a1a;color:#fff;vertical-align:middle;margin-inline-start:6px;white-space:nowrap;}
+.beta-note{background:#fff3e0;border:1px solid #e0b070;border-radius:8px;padding:5px 10px;margin-bottom:6px;color:#7a4a10;font-size:.95em;}
 </style>
 <script>/* JSZip 3.10.1 — inlined so Word export works offline */
 /*!
@@ -1155,7 +1165,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    <div id="search-wrap">
     <input id="search-box" type="text" placeholder="חיפוש מסכת או מראה מקום (Enter)..." oninput="filterNav(this.value)">
    </div>
-   <button id="sb-ask-btn" onclick="openSmartSearch()" title="הקלד שאלה בלשון חופשית וקבל תשובה מתומצתת ומקורות">🧠 שאל שאלה בלשון חופשית</button>
+   <button id="sb-ask-btn" onclick="openSmartSearch()" title="שאלה בלשון חופשית — מהדורה ניסיונית, התוצאות עדיין בשיפור">🧠 שאלה חופשית <span class="beta-tag">ניסיוני</span></button>
   </div>
   <div id="review-banner" style="display:none">
    <p></p><span></span>
@@ -1198,8 +1208,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    <button id="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" title="הסתר/הצג את התפריט הצדי" aria-label="הסתר תפריט">⮜ הסתר תפריט</button>
    <button id="nav-back-btn" onclick="navBack()" title="חזרה לעמוד הקודם (Alt+→)" aria-label="חזרה" style="background:#3a1e08;border:1px solid var(--gold);border-radius:8px;padding:5px 11px;cursor:pointer;color:var(--gold-light);font-family:inherit;font-size:.9em;white-space:nowrap;display:none;">↩ חזרה</button>
    <h1>מסכתא</h1>
-   <button class="tb-btn tb-ask" onclick="openSmartSearch()" title="שאלה בלשון חופשית — חיפוש חכם בכל המקורות (Ctrl+Shift+F)">🧠 שאלה חופשית</button>
    <button class="tb-btn" onclick="openSearch()" title="Ctrl+F">🔍 חיפוש</button>
+   <button class="tb-btn tb-ask" onclick="openSmartSearch()" title="שאלה בלשון חופשית — מהדורה ניסיונית (Ctrl+Shift+F)">🧠 שאלה חופשית <span class="beta-tag">ניסיוני</span></button>
    <button onclick="openTour()" style="background:none;border:1px solid #5a3a20;border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--muted);font-family:inherit;font-size:.82em;" title="הוראות שימוש">❓ עזרה</button>
    <button id="right-panel-toggle" onclick="toggleRightPanel()" title="הסתר/הצג את פאנל ההשוואות">⟵ הסתר השוואות</button>
    <div id="progress-bar-wrap">
@@ -1214,13 +1224,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    <div id="mishna-panel">
     <div id="intro-screen">
      <div class="logo">📜</div>
-     <h2>שלום, <span id="welcome-name"></span>!</h2>
-     <p>בחר מקור מהתפריט — משנה, תוספתא, מדרשי הלכה, או ברייתות הבבלי והירושלמי — או שאל שאלה:</p>
-     <div id="home-ask"><input id="home-ask-input" type="text" placeholder="שאל בלשון חופשית, למשל: מתי קוראים קריאת שמע בלילה" onkeydown="if(event.key==='Enter')askFromHome()"><button type="button" onclick="askFromHome()">🧠 שאל</button></div>
-     <div id="home-ask-hint">תשובה מתומצתת מהמקורות + המקורות התואמים, מדורגים לפי קרבה עניינית — עובד גם ללא אינטרנט</div>
+     <h2>שלום<span id="welcome-name"></span>!</h2>
+     <p>בחר מקור מהתפריט — משנה, תוספתא, מדרשי הלכה, או ברייתות הבבלי והירושלמי.</p>
      <div id="qotd"><p id="qotd-text"></p><cite id="qotd-cite"></cite></div>
      <div class="hint-cards">
-      <div class="hint-card hc-ask" onclick="openSmartSearch()"><div class="icon">🧠</div>שאלה בלשון חופשית</div>
+      <div class="hint-card hc-ask" onclick="openSmartSearch()"><div class="icon">🧠</div>שאלה בלשון חופשית <span class="beta-tag">ניסיוני</span></div>
       <div class="hint-card" onclick="randomMishna()"><div class="icon">🔗</div>מקבילות וקשרים לכל מקור</div>
       <div class="hint-card" onclick="setSidebarMode('midrash')"><div class="icon">📚</div>חמישה מקורות תנאיים יחד</div>
      </div>
@@ -1911,11 +1919,8 @@ let userTitle=(function(){try{return localStorage.getItem('ms_usertitle')||'';}c
 
 function initUser(){
  // [קישור ישיר] נפתח עם hash של מקור (#m1500, #t10000-sim): פותחים את המקור מיד; מסך השם יוצג בביקור הבא
- if(userName || /^#[mtdby]\d+(-sim)?$/.test(location.hash)){
-  startApp();
- } else {
-  showWelcomeScreen();
- }
+ // [38] בלי מסך כניסה/בחירת שם — נפתח ישר העמוד הראשי (אפשר לקבוע שם בלחיצה על 👤)
+ startApp();
 }
 
 function showWelcomeScreen(){
@@ -1958,7 +1963,7 @@ function renameUser(){
   localStorage.setItem('ms_usertitle',userTitle);
   document.getElementById('user-chip').textContent='👤 '+userName;
   const wn2=document.getElementById('welcome-name');
-  if(wn2) wn2.textContent=userName;
+  if(wn2) wn2.textContent=', '+userName;
   toast('שם עודכן!');
  }
 }
@@ -1966,10 +1971,11 @@ function renameUser(){
 function startApp(keepWelcome){
  const _ws=document.getElementById('welcome-screen');
  if(_ws&&!keepWelcome){_ws.style.display='none';_ws.classList.remove('fade-out');}
- document.getElementById('user-chip').textContent='👤 '+userName;
+ document.getElementById('user-chip').textContent=userName?'👤 '+userName:'👤';
+ document.getElementById('user-chip').title=userName?'שינוי שם':'הגדרת שם (לא חובה)';
  // Also update welcome-name shown in intro screen center
  const wn=document.getElementById('welcome-name');
- if(wn) wn.textContent=userName;
+ if(wn) wn.textContent=userName?', '+userName:'';
  buildNav();
  buildTosNav();
  if(typeof buildMidrashNav==='function')buildMidrashNav();
@@ -2886,7 +2892,7 @@ function renderStats(){
   {n:4159,icon:'👑',label:'סיים הש"ס'},
  ];
 
- let html=`<div class="stat-row"><span>שלום, ${userTitle} ${userName}!</span></div>
+ let html=`<div class="stat-row"><span>${userName?`שלום, ${userTitle} ${userName}!`:'שלום!'}</span></div>
   <div class="stat-row"><span>נלמד</span><span class="stat-val">${done} / ${N} (${pct}%)</span></div>
   <div class="stat-row"><span>הערות</span><span class="stat-val">📝 ${Object.keys(notes).length}</span></div>`;
 
@@ -4613,7 +4619,7 @@ populatePerek();
 // Fix: set welcome name after DOM ready
 document.addEventListener('DOMContentLoaded',()=>{
  const wn=document.getElementById('welcome-name');
- if(wn&&userName) wn.textContent=userName;
+ if(wn&&userName) wn.textContent=', '+userName;
  if(typeof _bindRefNav==='function')_bindRefNav();
 });
 // patch startApp to also set welcome name
@@ -9034,11 +9040,11 @@ window.goToSource = function(j,src){
     document.body.classList.toggle('smart-on',on); renderSmartSrc();
     if(on){ const se=document.getElementById('adv-source'); if(se && se.value!=='all'){ se.value='all'; } }
     document.querySelectorAll('.adv-tag[data-mode]').forEach(t=>t.classList.toggle('active', t.dataset.mode===_searchMode));
-    const btn=document.getElementById('smart-toggle'); if(btn){ btn.classList.toggle('on',on); btn.textContent=on?'🔍 לחיפוש מילולי':'🧠 לשאלה בלשון חופשית'; btn.title=on?'חיפוש מילה/ביטוי מדויק עם מסננים':'שאלה בלשון חופשית — תשובה מתומצתת ומקורות'; }
-    const h2=document.querySelector('#search-top h2'); if(h2) h2.textContent=on?'🧠 שאלה בלשון חופשית':'🔍 חיפוש מילולי במקורות';
+    const btn=document.getElementById('smart-toggle'); if(btn){ btn.classList.toggle('on',on); btn.textContent=on?'🔍 לחיפוש מילולי':'🧠 לשאלה בלשון חופשית (ניסיוני)'; btn.title=on?'חיפוש מילה/ביטוי מדויק עם מסננים':'שאלה בלשון חופשית — תשובה מתומצתת ומקורות'; }
+    const h2=document.querySelector('#search-top h2'); if(h2) h2.innerHTML=on?'🧠 שאלה בלשון חופשית <span class="beta-tag">מהדורה ניסיונית</span>':'🔍 חיפוש מילולי במקורות';
     if(on){ const ap=document.getElementById('adv-panel'); const at=document.getElementById('adv-toggle'); if(ap&&ap.classList.contains('open')){ ap.classList.remove('open'); if(at){ at.classList.remove('open'); at.textContent='⚙️ חיפוש מתקדם'; } } }
     let help=document.getElementById('mode-help'); if(!help){ const top=document.getElementById('search-top'); if(top){ help=document.createElement('div'); help.id='mode-help'; top.insertAdjacentElement('afterend',help); } }
-    if(help) help.innerHTML='כתוב שאלה כמו שאתה מדבר — <i>מי פטור מסוכה</i>, <i>היכן משקין את הסוטה</i>, <i>במה חולקים בית שמאי ובית הלל בברכת המזון</i> — ותקבל תשובה מתומצתת והמקורות. לחיפוש מילה מדויקת עם מסננים: <a href="#" onclick="toggleSmartMode(false);return false;">חיפוש מילולי</a>.'+((window.NEURAL&&window.NEURAL.hasData()&&window.NEURAL.isGemini&&window.NEURAL.isGemini())?' <a href="javascript:void(0)" onclick="NEURAL.promptKey()" title="חיבור מקוון (אופציונלי)" style="opacity:.55;text-decoration:none">🔑</a>':'');
+    if(help) help.innerHTML='<div class="beta-note">⚗️ <b>מהדורה ניסיונית</b> — השאלה החופשית עדיין בפיתוח, והתוצאות לא תמיד מדויקות. לחיפוש מדויק השתמש ב<a href="#" onclick="toggleSmartMode(false);return false;">חיפוש המילולי</a>.</div>כתוב שאלה כמו שאתה מדבר — <i>מי פטור מסוכה</i>, <i>היכן משקין את הסוטה</i>, <i>במה חולקים בית שמאי ובית הלל בברכת המזון</i> — ותקבל תשובה מתומצתת והמקורות.'+((window.NEURAL&&window.NEURAL.hasData()&&window.NEURAL.isGemini&&window.NEURAL.isGemini())?' <a href="javascript:void(0)" onclick="NEURAL.promptKey()" title="חיבור מקוון (אופציונלי)" style="opacity:.55;text-decoration:none">🔑</a>':'');
     const inp=document.getElementById('search-input');
     if(inp) inp.placeholder=on?'הקלד שאלה בלשון חופשית, למשל: מתי קוראים קריאת שמע בלילה? (Enter)':'חפש מילה או חלק ממילה, ביטוי, תנא, קטגוריה או תגית... (Enter לחיפוש)';
     if(!on) window._smartLast=null;
@@ -10202,7 +10208,7 @@ window.goToSource = function(j,src){
    <div class="adv-tags">
     <span class="adv-tag active" data-mode="AND" onclick="setMode('AND',this)">AND – כל המילים</span>
     <span class="adv-tag" data-mode="OR" onclick="setMode('OR',this)">OR – לפחות מילה אחת</span>
-    <span class="adv-tag" data-mode="SMART" onclick="setMode('SMART',this)" title="שאלה בלשון חופשית — דירוג לפי קרבה עניינית, מילים נרדפות וצורות דקדוקיות">🧠 שאלה חופשית – חיפוש חכם</span>
+    <span class="adv-tag" data-mode="SMART" onclick="setMode('SMART',this)" title="שאלה בלשון חופשית — דירוג לפי קרבה עניינית, מילים נרדפות וצורות דקדוקיות">🧠 שאלה חופשית – חיפוש חכם (ניסיוני)</span>
    </div>
 
 
