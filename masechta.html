@@ -7263,8 +7263,16 @@ function runMidrashIntegrationQA(){
   // Explicit protection for common root words that begin with a servile-looking
   // letter — never normalize these, regardless of statistics.
   const _SERVILE_PROTECT=new Set(['משנה','מלך','שבת','שמע','משכן','שלמה','שמים','שמן','מים','שם','משה','שדה','בית','כהן']);
+  // [מהיר] זיכרון לפי מילה: הפונקציה נקראת לכל מופע (יותר ממיליון בבניית האינדקסים) אבל תלויה רק במילה
+  // ובמילון המאגר, שנבנה פעם אחת — מחשבים פעם אחת לכל צורה. אותה תוצאה בדיוק.
+  const _nspMemo=new Map(); let _nspFor=null;
   function normalizeServilePrefix(tok){
     if(!_surfaceVocab || tok.length<4 || _SERVILE_PROTECT.has(tok)) return tok;
+    if(_nspFor!==_surfaceVocab){ _nspMemo.clear(); _nspFor=_surfaceVocab; }
+    let r=_nspMemo.get(tok); if(r===undefined){ r=_nspCore(tok); _nspMemo.set(tok,r); }
+    return r;
+  }
+  function _nspCore(tok){
     const fullDf=_surfaceDF[tok]||0;
     // (a) reliable servile prefixes: ה ו ב ל כ  (+ vav-stacks). Strip when the
     //     short form is a real corpus word at least as common as the full form.
@@ -9096,7 +9104,7 @@ window.goToSource = function(j,src){
   };
 
   async function gunzipB64(b64){
-    const bin=Uint8Array.from(atob(b64.trim()),c=>c.charCodeAt(0));
+    const bin=b64ToBytes(b64);
     const st=new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
     return new Uint8Array(await new Response(st).arrayBuffer());
   }
@@ -9576,7 +9584,7 @@ window.goToSource = function(j,src){
   window.ENRICH=E;
   E.hasData=function(){ const el=document.getElementById('__d_enr'); return !!(el && el.textContent.trim().length>100); };
   async function gunzipB64(b64){
-    const bin=Uint8Array.from(atob(b64.trim()),c=>c.charCodeAt(0));
+    const bin=b64ToBytes(b64);
     const st=new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
     return new Uint8Array(await new Response(st).arrayBuffer());
   }
@@ -9811,7 +9819,7 @@ window.goToSource = function(j,src){
   P.render=function(rows, container, curKey, full){
     const controls=(typeof renderSimControls==='function')?renderSimControls():'';
     const N=window.NEURAL, E=window.ENRICH;
-    const legend=`<div class="smart-hint" style="padding:2px 6px 6px">🔗 דירוג משולב: <b>לשון משותפת</b> (רצפי מילים זהים)${N&&N.ready?' + <b>משמעות</b> (וקטורים)':''} + דמיון מילולי${E&&E.ready?' + <b>ניתוח</b> (מילות מפתח)':''}. כרטיס "רצף" = שתי פסקאות סמוכות שיחד מקבילות למקור.</div>`;
+    const legend=`<div class="smart-hint" style="padding:2px 6px 6px">🔗 דירוג משולב: <b>לשון משותפת</b> (רצפי מילים זהים)${N&&N.ready?' + <b>משמעות</b> (וקטורים)':''} + דמיון מילולי${E&&E.ready?' + <b>ניתוח</b> (מילות מפתח)':''}. כרטיס "רצף" = שתי פסקאות סמוכות שיחד מקבילות למקור.${rows.pending?' <span class="par-pending" style="white-space:nowrap">⏳ מעדכן לפי הניתוח…</span>':''}</div>`;
     if(!rows.length){ container.innerHTML=controls+legend+'<p style="color:var(--muted);font-size:.85em;padding:8px">לא נמצאו מקבילות</p>'; return; }
     try{ window._cmpResultList=rows.map(r=>[r.id, Math.min(1,r.score), r.src]); }catch(e){}
     let html=`<p style="font-size:.74em;color:var(--muted);margin-bottom:6px">מקבילות וקשרים למקור זה (${rows.length})</p>`+legend;
@@ -9862,15 +9870,42 @@ window.goToSource = function(j,src){
     const token=(typeof nextSimToken==='function')?nextSimToken():0;
     d.innerHTML=controls+'<div style="text-align:center;padding:20px;color:var(--muted)"><div class="spinner"></div><p style="margin-top:8px;font-size:.82em">מחפש מקבילות…</p></div>';
     const ck=currentKey(); if(!ck||!ck[2]){ d.innerHTML=controls+'<p style="color:var(--muted);padding:8px">בחר מקור</p>'; return; }
-    const loads=[]; const N=window.NEURAL, E=window.ENRICH;
-    if(N&&N.hasData()&&!N.ready) loads.push(N.load()); if(E&&E.hasData()&&!E.ready&&!E.failed) loads.push(E.load());
-    Promise.all(loads).then(()=>{ setTimeout(()=>{
-      if(typeof isCurrentSimToken==='function' && !isCurrentSimToken(token)) return;
+    const N=window.NEURAL, E=window.ENRICH;
+    const nLoad=(N&&N.hasData()&&!N.ready)?N.load():null, eLoad=(E&&E.hasData()&&!E.ready&&!E.failed)?E.load():null;
+    // [מהיר] בפתיחה הראשונה בניית הניתוח (ENRICH) לוקחת כמה שניות — לא מחכים לה: מציגים מיד לפי לשון + משמעות
+    // (עם "מעדכן לפי הניתוח…"), וכשהניתוח מוכן מחשבים שוב ומרנדרים — רק אם עדיין באותו מקור ובמצב המשולב.
+    // התוצאה הסופית זהה לזו שהייתה מתקבלת בהמתנה; הכרטיס שהמשתמש קורא נשאר במקומו (ומי שבראש הרשימה — בראש).
+    let drawn=0, prev=null;   // 0 טרם, 1 מוקדם (בלי הניתוח), 2 סופי
+    const draw=ms=>setTimeout(()=>{
+      if(drawn===2 || (typeof isCurrentSimToken==='function' && !isCurrentSimToken(token))) return;
+      if(drawn){
+        if(_simMode!=='hybrid' || (currentKey()||[])[0]!==ck[0]) return;
+        if(!d.querySelector('.par-pending')) return draw(1000);   // הלשונית מציגה כרגע דבר אחר (למשל ⚖️ השוואה) — נעדכן כשתחזור
+      }
+      const pending=!!eLoad && !E.ready && !E.failed;
       let rows; try{ rows=P.compute(ck[2], ck[1], ck[0], (typeof _simScope!=='undefined')?_simScope:'all', {topK:60}); }
       catch(e){ console.error('PARALLELS failed',e); d.innerHTML=controls+'<p style="color:var(--muted);padding:8px">שגיאה בחישוב המקבילות</p>'; return; }
+      if(pending) rows.pending=true;
+      const keep=drawn?[keepAnchor(d,prev), keepAnchor(document.getElementById('parfull-list'),prev)]:[];
       P.render(rows, d, ck[0]);
-    },10); });
+      restoreAnchor(keep[0], d, rows); restoreAnchor(keep[1], document.getElementById('parfull-list'), rows);
+      drawn=pending?1:2; prev=rows;
+    },ms||10);
+    Promise.resolve(nLoad).then(()=>{ draw(); if(eLoad) eLoad.then(()=>draw()); });
   };
+  // רינדור חוזר: הכרטיס העליון הנראה (לפי מפתח) נשאר באותו גובה; רשימה שלא נגללה — נשארת בראש
+  const rowId=r=>r?r.key+(r.merged?'+'+r.merged.key:''):'';
+  function scrollerOf(el){ for(let x=el&&el.parentElement; x; x=x.parentElement){ const o=getComputedStyle(x).overflowY; if((o==='auto'||o==='scroll') && x.scrollHeight>x.clientHeight) return x; } return null; }
+  function keepAnchor(list, rows){
+    const sc=list&&rows&&scrollerOf(list); if(!sc || sc.scrollTop<1) return null;
+    const top=sc.getBoundingClientRect().top, cards=list.querySelectorAll('.sim-card');
+    for(let i=0;i<cards.length;i++){ const r=cards[i].getBoundingClientRect(); if(r.bottom>top+1) return {sc, st:sc.scrollTop, id:rowId(rows[i]), off:r.top-top}; }
+    return {sc, st:sc.scrollTop};
+  }
+  function restoreAnchor(a, list, rows){
+    if(!a) return; const j=a.id&&list?rows.findIndex(r=>rowId(r)===a.id):-1; const c=j>=0?list.querySelectorAll('.sim-card')[j]:null;
+    a.sc.scrollTop = c ? a.sc.scrollTop+(c.getBoundingClientRect().top-a.sc.getBoundingClientRect().top-a.off) : a.st;
+  }
 
   // ── 🔗 חלון מרכזי: המקור וכל מקבילותיו ברצף, בטקסט מלא (נפתח מכתובת עם "-sim": #m1500-sim, #t10000-sim) ──
   // אין כאן חישוב חדש: החלון משקף את הרינדור האחרון של לשונית "קשורות" — אותו מנוע, אותו סדר, אותם "רצפים",
@@ -10082,10 +10117,19 @@ window.goToSource = function(j,src){
 })();
 </script>
 <script>
+// base64 → בתים (משותף לטוען הנתונים, לווקטורים ולניתוח). Uint8Array.from(מחרוזת, פונקציה) איטי מאוד
+// במחרוזות של מגה־בתים (שניות לכל בלוק); fromBase64 המובנה או לולאה פשוטה — מילישניות.
+function b64ToBytes(b64){
+  b64=String(b64).trim();
+  if(typeof Uint8Array.fromBase64==='function'){ try{ return Uint8Array.fromBase64(b64); }catch(e){} }
+  var s=atob(b64), n=s.length, u=new Uint8Array(n);
+  for(var i=0;i<n;i++) u[i]=s.charCodeAt(i);
+  return u;
+}
 (async function(){
   var $=function(id){return document.getElementById(id);};
   function setMsg(t){var w=$('ws-loading'); if(w){ if(t===''){w.style.display='none';} else {w.textContent=t;} }}
-  async function gz(b64){ var bin=Uint8Array.from(atob(b64.trim()),function(c){return c.charCodeAt(0);}); var st=new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip')); return new TextDecoder('utf-8').decode(await new Response(st).arrayBuffer()); }
+  async function gz(b64){ var bin=b64ToBytes(b64); var st=new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip')); return new TextDecoder('utf-8').decode(await new Response(st).arrayBuffer()); }
   try{
     if(typeof DecompressionStream==='undefined') throw new Error('הדפדפן אינו תומך בפריסת נתונים (DecompressionStream)');
     var steps=[['RAW','__d_raw'],['TOSEFTA_RAW','__d_tos'],['MIDRASH_RAW','__d_mid'],['BAVLI_RAW','__d_bav'],['YERU_RAW','__d_yer']];
