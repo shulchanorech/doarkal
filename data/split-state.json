@@ -1,0 +1,16 @@
+{
+ "note": "written by tools/split-data.mjs",
+ "masechta.html": "a5f348e377c6b566b73bfe243544622781e1aa2c0b07142e1646e4a3a266faf6",
+ "masechta-full.html": "c3dfd88c078721c7504afd9dc198b2e36a2c60e977ce353fc20d338f0f460b06",
+ "dat": [
+  "bav.da0c014612.dat",
+  "emb.5c33fb756e.dat",
+  "enr.00ad600866.dat",
+  "mid.f91b6a25da.dat",
+  "raw.1ace0e9516.dat",
+  "syn.7a9e36fc92.dat",
+  "tos.3a83337b56.dat",
+  "yer.8cbbf92bc0.dat"
+ ],
+ "datPrev": []
+}
