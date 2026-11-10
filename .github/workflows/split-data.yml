@@ -1,0 +1,58 @@
+# Keeps the website light without changing how versions are uploaded.
+# After every upload of masechta.html, tools/split-data.mjs moves the big data blocks into data/*.dat
+# (masechta.html becomes the small file the site serves), keeps the full single file as
+# masechta-full.html, and this workflow commits the result to main. GitHub Pages keeps publishing
+# the branch exactly as before (Settings → Pages: Deploy from a branch, main, / (root)).
+name: Split data for Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - masechta.html
+      - masechta-full.html
+      - tools/split-data.mjs
+      - .github/workflows/split-data.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+# two uploads close together run one after the other, never at the same time
+concurrency:
+  group: split-data
+  cancel-in-progress: false
+
+jobs:
+  split:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # the newest main, not the commit that started this run
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Split masechta.html and commit
+        id: split
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            node tools/split-data.mjs
+            git add -A masechta.html masechta-full.html data
+            if git diff --cached --quiet; then echo "Already split, nothing to commit."; exit 0; fi
+            git commit -q -m "Split data for Pages"
+            if git push -q origin HEAD:main; then echo "pushed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+            echo "main moved on during this run; splitting the new main again"
+            git fetch -q origin main && git reset -q --hard origin/main
+          done
+          exit 1
+      # a push made with GITHUB_TOKEN may not start the branch Pages build by itself
+      - name: Request a Pages build
+        if: steps.split.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || true
