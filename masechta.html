@@ -1197,6 +1197,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
    <button class="sf-btn" onclick="confirmClearHistory()" title="נקה היסטוריה">🗑️ נקה</button>
    <button class="sf-btn" onclick="backupUserData()" title="שמור את כל הנתונים האישיים (הערות, מועדפים, נלמד, היסטוריה) לקובץ JSON">💾 גיבוי</button>
    <button class="sf-btn" onclick="restoreUserData()" title="שחזר נתונים אישיים מקובץ גיבוי">📂 שחזור</button>
+   <button class="sf-btn" onclick="clearIndexCache()" title="מחיקת האינדקסים שנשמרו בדפדפן כדי שהפתיחה תהיה מהירה. הם נבנים ונשמרים מחדש בפתיחה הבאה. הנתונים האישיים לא נמחקים">🧹 מטמון</button>
   </div>
   <div id="sb-credit">© כל הזכויות שמורות · <b>fibelfinef@gmail.com</b></div>
  </div>
@@ -1529,6 +1530,65 @@ async function gunzipData(id){
   var prev=Promise.all(first.map(function(id){ return ok(fetchDataBlock(id)); }));
   // אחרי בלוקי הפתיחה — אחד אחרי השני, בסדר הקובץ: הווקטורים (שהמקבילות מחכות להם) לפני הניתוח
   rest.forEach(function(id){ prev=ok(fetchDataBlock(id,prev)); });
+})();
+// ══ מטמון האינדקסים בדפדפן (IndexedDB) ══
+// בכל פתיחה הדפדפן בונה מהנתונים את אינדקס לשון המקור (__unified, כ-3 שנ' במחשב מהיר) ואת אינדקס ניתוח המקורות
+// (ENRICH, כ-2 שנ'); בטלפון פי 4 ויותר. אחרי הבנייה הראשונה הם נשמרים כאן (ברקע, בזמן פנוי), ובפתיחה הבאה —
+// גם בלשונית חדשה או אחרי סגירת הדפדפן — משוחזרים במקום להיבנות: אותם אובייקטים ובאותו סדר, ולכן אותן תוצאות.
+// כאן רק האחסון; האריזה והשחזור בקוד האפליקציה (IDXP ב-__appsrc).
+// המפתח: גירסת הפורמט + חתימת קוד האפליקציה + זהות בלוקי הנתונים — ה-hash שבשם קובץ ה-data-src, ובקובץ המלא
+// אורך ה-base64 וסופו (סוף ה-gzip הוא CRC32 ואורך התוכן). קוד או נתונים שהשתנו → בונים מחדש ושומרים במקום הישן
+// (לכל אינדקס רשומה אחת). IndexedDB חסום או מלא, גלישה פרטית, רשומה פגומה → בונים כרגיל, בלי הודעה.
+// עובד גם מקובץ במחשב (masechta-full.html מ-file://) כשהדפדפן מרשה IndexedDB שם; אם לא — פשוט בונים.
+var IDXC=(function(){
+  var VER=1, DB='masechta-idx', ST='idx', WAIT=5000;
+  var BOOT=['__d_raw','__d_tos','__d_mid','__d_bav','__d_yer'], DEPS={uni:BOOT, enr:BOOT.concat('__d_enr')};
+  var C={uni:null, off:false}, dbP=null, code=null, pre={};
+  function sig(id){ var el=document.getElementById(id); if(!el) return '-'; var s=el.getAttribute('data-src'); if(s) return s.replace(/^.*\//,'');
+    var t=el.textContent.trim(); return t.length+':'+t.slice(-16); }
+  function codeSig(){ if(code) return code; var s=(document.getElementById('__appsrc')||{}).textContent||'', h=0x811c9dc5;
+    for(var i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return code=s.length+'.'+(h>>>0).toString(36); }
+  function key(kind){ return 'v'+VER+'|'+codeSig()+'|'+DEPS[kind].map(sig).join('|'); }
+  function open(){
+    return dbP||(dbP=new Promise(function(res,rej){
+      var q=indexedDB.open(DB,1);
+      q.onupgradeneeded=function(){ q.result.createObjectStore(ST); };
+      q.onsuccess=function(){ var db=q.result; db.onversionchange=function(){ db.close(); dbP=null; }; res(db); };
+      q.onerror=function(){ rej(q.error); }; q.onblocked=function(){ rej(new Error('blocked')); };
+    }));
+  }
+  function tx(mode, fn){ return open().then(function(db){ return new Promise(function(res,rej){
+    var t=db.transaction(ST,mode), r=fn(t.objectStore(ST)); t.oncomplete=function(){ res(r&&r.result); }; t.onerror=t.onabort=function(){ rej(t.error); }; }); }); }
+  function withTimeout(p){ return Promise.race([p, new Promise(function(res){ setTimeout(res,WAIT,null); })]); }
+  // → Promise<data|null>; מתחיל לקרוא פעם אחת. take מוסר את ההפניה (כדי לא להחזיק עשרות MB בזיכרון)
+  function load(kind){
+    if(!pre[kind]) pre[kind]=withTimeout(tx('readonly',function(s){ return s.get(kind); }).then(function(r){
+      if(r && r.key===key(kind) && r.data) return r.data;
+      if(r) tx('readwrite',function(s){ s.delete(kind); }).catch(function(){});   // גירסה ישנה — מפנים מקום
+      return null;
+    })).catch(function(){ return null; });
+    return pre[kind];
+  }
+  C.take=function(kind){ var p=load(kind); delete pre[kind]; return p; };
+  // נקרא מהטוען לפני הרצת האפליקציה: קריאת שני האינדקסים מתחילה במקביל לטעינת הנתונים
+  C.prefetch=function(){
+    if(typeof indexedDB==='undefined' || !indexedDB){ C.off=true; return null; }
+    try{ if(hasDataBlock('__d_enr',0)) load('enr'); return C.take('uni'); }catch(e){ C.off=true; return null; }
+  };
+  C.put=function(kind, data){
+    if(C.off) return Promise.resolve(false);
+    return tx('readwrite',function(s){ s.put({key:key(kind), data:data, saved:Date.now()}, kind); }).then(function(){ return true; },
+      function(){ return tx('readwrite',function(s){ s.delete(kind); }).then(function(){ return false; },function(){ return false; }); });   // מכסה מלאה וכד'
+  };
+  // מחיקה (כפתור 🧹 מטמון בתחתית התפריט): גם לא שומרים שוב בלשונית הזאת
+  C.clear=function(){
+    C.off=true; C.uni=null; pre={};
+    return new Promise(function(res){
+      var go=function(){ try{ var q=indexedDB.deleteDatabase(DB); q.onsuccess=q.onerror=q.onblocked=function(){ res(); }; }catch(e){ res(); } };
+      if(dbP) dbP.then(function(db){ db.close(); dbP=null; go(); },go); else go();
+    });
+  };
+  return C;
 })();
 </script>
 <script type="text/plain" id="__appsrc">
@@ -2193,8 +2253,20 @@ function wordMatch(text, term, mode){
 
 // ── TF-IDF ──
 let _idf=null,_tfc={},_inv=null;
+// [מטמון] _inv ו-_idf נשמרים יחד עם האינדקס המאוחד (_packUni) ומשוחזרים כאן: אותם אובייקטים, אותו סדר, אותו idf
+function _mishIdxFromCache(){
+ const c=window.IDXC&&IDXC.uni, d=c&&c.m; if(!d) return false; c.m=null;
+ try{
+  const w=d.w, o=d.o, p=d.p; if(d.n!==N || o.length!==w.length+1 || o[w.length]!==p.length) return false;
+  for(let j=0;j<p.length;j++) if(!(p[j]>=0 && p[j]<N)) return false;
+  const inv={}, idf={};
+  for(let i=0;i<w.length;i++){ const a=Array.from(p.subarray(o[i],o[i+1])); inv[w[i]]=a; idf[w[i]]=Math.log((N+1)/(a.length+1)); }
+  _inv=inv; _idf=idf; return true;
+ }catch(e){ return false; }
+}
 function getIDF(){
  if(_idf) return _idf;
+ if(_mishIdxFromCache()) return _idf;
  const df={};
  mishnayot.forEach(m=>{new Set(tokenize(m.t)).forEach(w=>{df[w]=(df[w]||0)+1;});});
  _idf={};
@@ -2225,6 +2297,7 @@ function tanSim(a,b){
 }
 function getInv(){
  if(_inv)return _inv;
+ if(_mishIdxFromCache()) return _inv;
  _inv={};
  mishnayot.forEach((m,i)=>{
   new Set(tokenize(m.t)).forEach(w=>{if(!_inv[w])_inv[w]=[];_inv[w].push(i);});
@@ -7417,9 +7490,111 @@ function runMidrashIntegrationQA(){
   function _tags(it){ return (typeof itemTags==='function')?itemTags(it):(it.tags||[]); }
   function _tans(it){ return (typeof itemTannaim==='function')?itemTannaim(it):(it.tan||[]); }
 
+  // ----- [מטמון] אריזה ושחזור של האינדקסים (האחסון: IDXC בטוען) -----
+  // structured clone של אובייקטים גדולים איטי אפילו מבנייה מחדש, ולכן נשמרים מערכים טיפוסיים ורשימות מילים, ובשחזור
+  // נבנים אותם אובייקטים (Object.create(null)) עם אותם ערכים ובאותו סדר מפתחות — הסדר קובע את סדר הסכימה ב-cosine
+  // ואת סדר המועמדים, ולכן נשמר במדויק. ה-df הוא אורך רשימת ההיפוך, וה-idf מחושב ממנו באותה נוסחה כמו בבנייה.
+  // ערכי הווקטורים נשמרים כספירה שלמה שמהנוסחה שלה הערך מחושב מחדש בדיוק (נבדק ערך-ערך באריזה), או כטבלת ערכים שונים.
+  const IDXP=window.IDXP={
+    idle:f=>(window.requestIdleCallback?requestIdleCallback(f,{timeout:4000}):setTimeout(f,200)),
+    // מריץ את האריזה (generator) בפרוסות של כ-12ms בזמן פנוי, ואז שומר — לא מעכב את התצוגה הראשונה
+    later(kind, gen){
+      if(!window.IDXC || IDXC.off) return;
+      const step=()=>{ if(IDXC.off) return;
+        const E=window.ENRICH; if(E && E.loading && !E.ready && !E.failed) return setTimeout(step,500);   // לא מתחרים בבניית הניתוח (התצוגה המלאה מחכה לה)
+        const t0=performance.now(); let r;
+        try{ do{ r=gen.next(); }while(!r.done && performance.now()-t0<12); }catch(e){ return; }
+        if(!r.done) return IDXP.idle(step);
+        if(r.value) IDXC.put(kind, r.value); };
+      IDXP.idle(step);
+    },
+    map(a){ const m=new Map(); a.forEach((x,i)=>m.set(x,i)); return m; },
+    ints:n=>(n<=65536?Uint16Array:Int32Array),
+    // {מילה:[מפתחות]} → {w:[מילים], o:היסטים, p:מספרי הפריטים (מתוך nk)}
+    *inv(obj, idx, nk){ const w=Object.keys(obj); let n=0; for(const x of w) n+=obj[x].length;
+      const o=new Int32Array(w.length+1), p=new (IDXP.ints(nk))(n); let j=0;
+      for(let i=0;i<w.length;i++){ const l=obj[w[i]]; for(let k=0;k<l.length;k++){ const v=idx.get(l[k]); if(v===undefined) throw 0; p[j++]=v; } o[i+1]=j; if((i&1023)===1023) yield; }
+      return {w,o,p}; },
+    unInv(d, keys){ const w=d.w, o=d.o, p=d.p, out=Object.create(null); if(o.length!==w.length+1 || o[w.length]!==p.length) throw 0;
+      for(let i=0;i<w.length;i++){ const a=new Array(o[i+1]-o[i]); for(let j=o[i],m=0;j<o[i+1];j++,m++){ const k=keys[p[j]]; if(k===undefined) throw 0; a[m]=k; } out[w[i]]=a; }
+      return out; },
+    // {מפתח:{מילה:מספר}} לפי רשימת המפתחות → {o:היסטים, w:מזהי מילים (מתוך wid), c+e: ספירות (enc) | c+t: טבלה | v:Float64}
+    *vecs(fam, keys, wid, enc){ let n=0; for(let i=0;i<keys.length;i++){ const x=fam[keys[i]]; for(const t in x) n++; if((i&1023)===1023) yield; }
+      const o=new Int32Array(keys.length+1), w=new (IDXP.ints(wid.size))(n), v=new Float64Array(n); let j=0;
+      for(let i=0;i<keys.length;i++){ const x=fam[keys[i]]; for(const t in x){ const id=wid.get(t); if(id===undefined) throw 0; w[j]=id; v[j++]=x[t]; } o[i+1]=j; if((i&511)===511) yield; }
+      const small=(c,max)=>max<256?Uint8Array.from(c):c;
+      if(enc){ const c=new Uint16Array(n); let ok=true, max=0;
+        for(let i=0;i<keys.length && ok;i++){ for(let j=o[i];j<o[i+1];j++){ const q=enc.to(i,w[j],v[j]); if(!(q>=0 && q<65536) || !Object.is(enc.from(i,w[j],q),v[j])){ ok=false; break; } c[j]=q; if(q>max) max=q; } if((i&4095)===4095) yield; }
+        if(ok) return {o,w,c:small(c,max),e:1}; }
+      const m=new Map(); let neg0=false;
+      for(let j=0;j<n && m.size<=65536;j++){ const x=v[j]; if(Object.is(x,-0)) neg0=true; if(!m.has(x)) m.set(x,m.size); if((j&65535)===65535) yield; }
+      if(neg0 || m.size>65536) return {o,w,v};
+      const t=Float64Array.from(m.keys()), c=new Uint16Array(n); for(let j=0;j<n;j++){ c[j]=m.get(v[j]); if((j&65535)===65535) yield; }
+      return {o,w,c:small(c,m.size-1),t}; },
+    // → Float64Array של הערכים (enc.from(i, מזהה מילה, ספירה) — אותה נוסחה כמו בבנייה)
+    vals(d, enc){ if(d.v) return d.v; const c=d.c, n=c.length, v=new Float64Array(n);
+      if(d.t){ const t=d.t; for(let j=0;j<n;j++){ const x=t[c[j]]; if(x===undefined) throw 0; v[j]=x; } }
+      else{ if(!enc || !d.e) throw 0; const o=d.o, w=d.w; for(let i=0;i<o.length-1;i++) for(let j=o[i];j<o[i+1];j++) v[j]=enc.from(i,w[j],c[j]); }
+      return d.v=v; },
+    unVecs(d, keys, words, enc){ const o=d.o, w=d.w, v=IDXP.vals(d,enc), out=Object.create(null); if(o.length!==keys.length+1 || o[keys.length]!==w.length || v.length!==w.length) throw 0;
+      for(let i=0;i<keys.length;i++){ const x=Object.create(null); for(let j=o[i];j<o[i+1];j++){ const t=words[w[j]]; if(t===undefined) throw 0; x[t]=v[j]; } out[keys[i]]=x; }
+      return out; },
+  };
+  // ערך בווקטור = (ספירה/אורך)·(idf||1), כמו בבנייה (PASS 3); idfA לפי מזהה מילה
+  const _tfEnc=(len,idfA)=>({to:(i,id,v)=>Math.round(v*len[i]/(idfA[id]||1)), from:(i,id,c)=>(c/len[i])*(idfA[id]||1)});
+  function* _packUni(items){
+    const keys=items.map(r=>r.key), idx=IDXP.map(keys), NK=keys.length, len=new Int32Array(NK);
+    items.forEach((r,i)=>{ len[i]=r._len; });
+    const s=yield* IDXP.inv(UNIFIED_INV,idx,NK), b=yield* IDXP.inv(UNIFIED_BASE_INV,idx,NK);
+    const tf=yield* IDXP.vecs(UNIFIED_TF,keys,IDXP.map(s.w),_tfEnc(len,s.w.map(w=>UNIFIED_IDF[w])));
+    const btf=yield* IDXP.vecs(UNIFIED_BASE_TF,keys,IDXP.map(b.w),_tfEnc(len,b.w.map(w=>UNIFIED_BASE_IDF[w])));
+    // צורות מנוקדות: vocSet של כל פריט (מילים לפי סדר ההופעה הראשונה = סדר vocDf); וקטור הניקוד וה-idf שלו נגזרים מהן
+    const vw=[], vid=new Map(), vo=new Int32Array(NK+1), vp=[];
+    for(let i=0;i<NK;i++){ items[i].vocSet.forEach(x=>{ let id=vid.get(x); if(id===undefined){ id=vw.length; vw.push(x); vid.set(x,id); } vp.push(id); }); vo[i+1]=vp.length; if((i&1023)===1023) yield; }
+    const cat=yield* IDXP.inv(UNIFIED_CAT_INV,idx,NK), tag=yield* IDXP.inv(UNIFIED_TAG_INV,idx,NK), tan=yield* IDXP.inv(UNIFIED_TAN_INV,idx,NK);
+    // אינדקס המילים של המשניות (getInv/getIDF, נבנה בפתיחה): הרשימות הן מספרי משניות
+    const m=(typeof getInv==='function' && getIDF())?yield* IDXP.inv(getInv(),IDXP.map(mishnayot.map((x,i)=>i)),mishnayot.length):null;
+    if(m) m.n=mishnayot.length;
+    return {n:NK, s, b, tf, btf, voc:{w:vw, o:vo, p:IDXP.ints(vw.length).from(vp)}, len, cat, tag, tan, m};
+  }
+  // משחזר את כל מה ש-buildUnifiedIndex בונה (גם שדות הפריטים) — או false, ואז בונים כרגיל
+  function _uniFromCache(items){
+    const d=window.IDXC && IDXC.uni; if(!d || !d.s) return false; IDXC.uni=d.m?{m:d.m}:null;   // m: לאינדקס המשניות (getInv)
+    try{
+      const NN=items.length, keys=items.map(r=>r.key);
+      if(d.n!==NN || d.len.length!==NN || d.voc.o.length!==NN+1 || new Set(keys).size!==NN) return false;
+      const sdf=Object.create(null), idf=Object.create(null), bidf=Object.create(null), norms=Object.create(null);
+      const sw=d.s.w, so=d.s.o, bw=d.b.w, bo=d.b.o, idfA=new Float64Array(sw.length), bidfA=new Float64Array(bw.length);
+      for(let i=0;i<sw.length;i++){ const df=so[i+1]-so[i]; sdf[sw[i]]=df; idf[sw[i]]=idfA[i]=Math.log((NN+1)/(df+1)); }
+      for(let i=0;i<bw.length;i++) bidf[bw[i]]=bidfA[i]=Math.log((NN+1)/(bo[i+1]-bo[i]+1));
+      const inv=IDXP.unInv(d.s,keys), binv=IDXP.unInv(d.b,keys);
+      const tf=IDXP.unVecs(d.tf,keys,sw,_tfEnc(d.len,idfA)), btf=IDXP.unVecs(d.btf,keys,bw,_tfEnc(d.len,bidfA));
+      const cinv=IDXP.unInv(d.cat,keys), tginv=IDXP.unInv(d.tag,keys), tninv=IDXP.unInv(d.tan,keys);
+      const tv=d.tf.v, to=d.tf.o;
+      for(let i=0;i<NN;i++) if(d.len[i]){ let nrm=0; for(let j=to[i];j<to[i+1];j++) nrm+=tv[j]*tv[j]; norms[keys[i]]=Math.sqrt(nrm); }
+      const vw=d.voc.w, vo=d.voc.o, vp=d.voc.p, vdf=new Int32Array(vw.length), vidfA=new Float64Array(vw.length), vidf=Object.create(null);
+      for(let j=0;j<vp.length;j++){ if(!(vp[j]<vw.length)) throw 0; vdf[vp[j]]++; }
+      for(let i=0;i<vw.length;i++){ vidfA[i]=Math.log((NN+1)/(vdf[i]+1)); vidf[vw[i]]=vidfA[i]; }
+      const vtf=Object.create(null), vnorms=Object.create(null), bo2=d.btf.o, bw2=d.btf.w;
+      for(let i=0;i<NN;i++){
+        const r=items[i], vs=new Set(), vvec=Object.create(null), bs=new Set();
+        for(let j=bo2[i];j<bo2[i+1];j++) bs.add(bw[bw2[j]]);
+        if(vo[i+1]>vo[i]){ let vn=0; for(let j=vo[i];j<vo[i+1];j++){ const x=vw[vp[j]], val=(vidfA[vp[j]]||1); vs.add(x); vvec[x]=val; vn+=val*val; } vnorms[keys[i]]=Math.sqrt(vn); }
+        vtf[keys[i]]=vvec;
+        r._len=d.len[i]; r.baseSet=bs; r.vocSet=vs; r.hasNikud=vs.size>0;
+      }
+      _surfaceDF=sdf; _surfaceVocab=new Set(sw); UNIFIED_IDF=idf; UNIFIED_BASE_IDF=bidf; UNIFIED_VOC_IDF=vidf;
+      UNIFIED_NORMS=norms; UNIFIED_BASE_TF=btf; UNIFIED_VOC_TF=vtf; UNIFIED_VOC_NORMS=vnorms;
+      UNIFIED_INV=inv; UNIFIED_BASE_INV=binv; UNIFIED_CAT_INV=cinv; UNIFIED_TAG_INV=tginv; UNIFIED_TAN_INV=tninv;
+      UNIFIED_TF=tf;   // אחרון: הסימן ש"האינדקס מוכן"
+      return true;
+    }catch(e){ return false; }
+  }
+
   function buildUnifiedIndex(){
     if(UNIFIED_TF) return;
     const items=buildAllSimItems();
+    if(_uniFromCache(items)) return;   // [מטמון] נשמר בפתיחה קודמת עם אותם נתונים ואותו קוד
     const NN=items.length;
     // ---- PASS 1: surface tokens + surface document-frequency (needed before
     //              servile normalization can run safely) ----
@@ -7480,6 +7655,7 @@ function runMidrashIntegrationQA(){
       new Set(_tans(rec.item)).forEach(t=>_push(UNIFIED_TAN_INV,t,rec.key));
       delete rec._toks; delete rec._baseToks;
     });
+    IDXP.later('uni', _packUni(items));   // [מטמון] שומרים לפתיחה הבאה (ברקע)
   }
   window.__unified = {buildAllSimItems, buildUnifiedIndex, get items(){return ALL_SIM_ITEMS;},
     // exposed for the question-search module (read-only use)
@@ -9393,6 +9569,14 @@ window.goToSource = function(j,src){
     inp.click();
   };
 
+  // מטמון האינדקסים (IDXC בטוען): מוחקים; בפתיחה הבאה נבנים ונשמרים מחדש
+  window.clearIndexCache=function(){
+    if(typeof IDXC==='undefined'){ toast('אין מטמון בקובץ זה'); return; }
+    let mb=''; const est=(navigator.storage&&navigator.storage.estimate)?navigator.storage.estimate().catch(()=>null):Promise.resolve(null);
+    est.then(e=>{ if(e&&e.usage>=1048576) mb=' ('+Math.round(e.usage/1048576)+' MB)'; return IDXC.clear(); })
+       .then(()=>toast('🧹 המטמון נמחק'+mb+' — בפתיחה הבאה האינדקסים ייבנו מחדש (כמה שניות) וישמרו שוב'));
+  };
+
   // ── 2. מיקום אחרון + קישור עמוק ──
   const KIND_PREFIX={mishna:'m',tosefta:'t',midrash:'d',bavli:'b',yeru:'y'};
   function currentRef(){
@@ -9670,6 +9854,26 @@ window.goToSource = function(j,src){
     };
     step();
   }
+  // [מטמון] האינדקס נשמר בדפדפן אחרי הבנייה הראשונה ומשוחזר בפתיחות הבאות (IDXP באינדקס המאוחד, IDXC בטוען)
+  async function fromCache(){
+    if(E.USE_STEMS || !window.IDXC || !window.IDXP) return false;
+    const d=await IDXC.take('enr'); if(!d) return false;
+    try{
+      const P=window.IDXP, keys=Object.keys(E.items), NN=keys.length;
+      if(d.n!==NN || d.len.length!==NN) return false;
+      const inv=P.unInv(d.inv,keys), tf=P.unVecs(d.tf,keys,d.inv.w), w=d.inv.w, o=d.inv.o, idf=Object.create(null), len=Object.create(null);
+      for(let i=0;i<w.length;i++) idf[w[i]]=Math.log((NN+1)/(o[i+1]-o[i]+1));
+      let tot=0; for(let i=0;i<NN;i++){ len[keys[i]]=d.len[i]; tot+=d.len[i]; }
+      E.inv=inv; E.idf=idf; E.tf=tf; E.len=len; E.avgLen=tot/(NN||1); E.vocab=new Set(w); E.n=NN; E.progress=1;
+      return true;
+    }catch(e){ return false; }
+  }
+  function toCache(){
+    if(E.USE_STEMS || !window.IDXP) return;
+    const P=window.IDXP;
+    P.later('enr', (function*(){ const keys=Object.keys(E.items), inv=yield* P.inv(E.inv,P.map(keys),keys.length), tf=yield* P.vecs(E.tf,keys,P.map(inv.w));
+      return {n:keys.length, inv, tf, len:Float64Array.from(keys,k=>E.len[k])}; })());
+  }
   E.load=function(){
     if(E.ready) return Promise.resolve(true);
     if(E.loading) return E.loading;
@@ -9677,12 +9881,16 @@ window.goToSource = function(j,src){
       try{
         if(!hasDataBlock('__d_enr',0)){ E.failed='אין נתונים'; return false; }
         const buf=await gunzipData('__d_enr');
+        // תצוגת מקבילות ראשונה שכבר ממתינה (טיימר של 10ms) רצה לפני העבודה הכבדה כאן — הניתוח נדרש רק לתצוגה המלאה שאחריה
+        const pause=()=>new Promise(res=>setTimeout(res,20));
+        await pause();
         const j=JSON.parse(new TextDecoder().decode(buf));
         if(!j || !j.items) throw new Error('bad format');
         E.items=j.items; E.model=j.model||''; E.built=j.built||'';
+        await pause();
         // normalizeServilePrefix דורש את אינדקס המאגר (surfaceVocab) — נבנה אותו קודם
         if(window.__unified && typeof window.__unified.buildUnifiedIndex==='function') window.__unified.buildUnifiedIndex();
-        await new Promise(res=>buildIndex(res));
+        if(!(await fromCache())){ await new Promise(res=>buildIndex(res)); toCache(); }   // [מטמון] ראו IDXC בטוען
         await E.loadSyn();
         E.ready=true; E.failed=null; return true;
       }catch(e){ console.error('ENRICH load failed',e); E.failed=String(e&&e.message||e); return false; }
@@ -10158,12 +10366,14 @@ window.goToSource = function(j,src){
   try{
     if(typeof DecompressionStream==='undefined') throw new Error('הדפדפן אינו תומך בפריסת נתונים (DecompressionStream)');
     var steps=[['RAW','__d_raw'],['TOSEFTA_RAW','__d_tos'],['MIDRASH_RAW','__d_mid'],['BAVLI_RAW','__d_bav'],['YERU_RAW','__d_yer']];
+    var idx=(typeof IDXC!=='undefined')?IDXC.prefetch():null;   // [מטמון] האינדקסים השמורים נקראים במקביל לנתונים
     for(var i=0;i<steps.length;i++){
       var m='טוען נתונים\u2026 ('+(i+1)+'/5)'; setMsg(m);
       // קובץ נתונים שמתעכב (רשת איטית, סינון) — אומרים זאת במקום להיראות תקוע
       var slow=setTimeout(function(m){ setMsg(m+' — לוקח יותר זמן מהרגיל (רשת איטית או סינון)'); }, 15000, m);
       try{ window[steps[i][0]]=JSON.parse(new TextDecoder('utf-8').decode(await gunzipData(steps[i][1]))); } finally{ clearTimeout(slow); }
     }
+    if(idx) IDXC.uni=await idx;   // בדרך כלל כבר מוכן (הקריאה קצרה מטעינת הנתונים); לכל היותר 5 שנ'
     setMsg('מפעיל\u2026');
     var sc=document.createElement('script'); sc.textContent=$('__appsrc').textContent; document.body.appendChild(sc);
     setMsg('');
